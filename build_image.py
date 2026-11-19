@@ -1,188 +1,291 @@
 #!/usr/bin/env python3
-"""Build entry.png: a newspaper front page summing up 19 Nov 2026 world news.
+"""Draw entry.png: a one-page newspaper front page for 19 November 2026.
 
-Every headline is grounded in reporting from 19 November 2026:
-  - Grand Theft Auto VI launches worldwide: midnight local rollout
-    from New Zealand, PS5 + Xbox Series X|S, $79.99, Vice City /
-    Leonida, Lucia Caminos and Jason Duval, ~16M preorders, $1.5B+
-    in sales before launch (Sensor Tower), 13 years after GTA V,
-    no PC date announced (Reuters; AP; The Guardian)
-  - Trump-Xi-Putin trilateral summit in Shenzhen TODAY: first-ever
-    trilateral format, Kylin Villa 2:30pm local, APEC sidelines;
-    Trump arrived Nov 18, Putin arrived early Nov 18 and met Xi;
-    Ukraine, Iran, trade, AI, nuclear weapons (New START expired);
-    no formal agenda; first Trump-Putin face-to-face in over a year
-    (China Foreign Ministry; AP; Le Monde; Yonhap)
-  - Hakeem Jeffries nominated for US House Speaker: Democrats 251-11
-    in a closed-door secret ballot Wed 18 Nov; first Black Speaker
-    if elected Jan 3 (needs 218 votes); Clark first woman majority
-    leader, Aguilar first Latino whip, Underwood highest-ranking
-    Black woman in Congress (CNN; Reuters; USA Today; NPR)
-  - Voyager 1 one light-day from Earth: crossed Wed 18 Nov at
-    5:16:07am EST, 16.1 billion miles / 25.9 billion km / 173.14 AU,
-    first human-made object that far; NASA confirms at a JPL
-    discussion today noon EST; launched Sep 5 1977; signal now
-    takes 24 hours each way; Voyager 2 reaches it Nov 2035
-    (NASA; Popular Science; EarthSky)
-  - EU proposes a EUR 45 billion loan for Ukraine, repaid after
-    Russia pays reparations; raised on capital markets
-    (Financial Times)
-  - Cyclone Akvan over the Bay of Bengal intensifying into a very
-    severe cyclonic storm, due at the Andhra Pradesh coast Nov 20
-  - Russia accuses France of deploying troops to Ukraine
-    (Foreign Minister Lavrov; AFP, Nov 17)
-  - Sports: India beats Pakistan 2-1 to win the SAFF Championship
-    final in Dhaka
-  - Australia sanctions Israeli settlers and organisations over
-    West Bank expansion
-
-Output: 1024x1024 PNG, well under the 1 MiB limit. Deterministic:
-same input, same bytes (no timestamps, no randomness).
+Everything is drawn with Pillow and the DejaVu fonts. No network, no
+randomness, no timestamps: running this twice produces identical bytes.
 """
 import os
+
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "entry.png")
+FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
-SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-SERIF_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
-SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-W, H = 1024, 1024
-PAPER = (247, 243, 234)   # newsprint off-white
-INK = (22, 22, 26)        # near-black
-RED = (178, 34, 34)       # headline red
-TEAL = (16, 78, 90)       # summit teal
-GOLD = (176, 132, 24)
-GREY = (96, 92, 84)
-RULE = (60, 56, 50)
+PAGE_W, PAGE_H = 1024, 1024
+PAPER = (245, 240, 226)
+INK = (18, 18, 18)
+RULE = (18, 18, 18)
+ACCENT = (163, 18, 18)          # kicker red
+PANEL_LINE = (120, 110, 95)
+SOFT = (60, 58, 52)             # secondary text
+SKY_TOP = (255, 183, 94)
+SKY_MID = (244, 120, 110)
+SKY_LOW = (94, 58, 120)
 
 
-def font(path, size):
-    return ImageFont.truetype(path, size)
+def font(name, size):
+    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap returning a list of lines that fit max_w."""
-    lines, cur = [], ""
-    for word in text.split():
-        trial = (cur + " " + word).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
-            cur = trial
-        else:
-            if cur:
+F_TITLE = font("DejaVuSerif-Bold.ttf", 50)
+F_DATE = font("DejaVuSans-Bold.ttf", 17)
+F_KICKER = font("DejaVuSans-Bold.ttf", 19)
+F_HEAD = font("DejaVuSerif-Bold.ttf", 42)
+F_DECK = font("DejaVuSans.ttf", 19)
+F_STAT_NUM = font("DejaVuSans-Bold.ttf", 23)
+F_STAT_LBL = font("DejaVuSans.ttf", 13)
+F_LABEL = font("DejaVuSans-Bold.ttf", 15)
+F_COL_HEAD = font("DejaVuSans-Bold.ttf", 25)
+F_COL_BODY = font("DejaVuSans.ttf", 16)
+F_SMALL_HEAD = font("DejaVuSans-Bold.ttf", 21)
+F_SMALL_BODY = font("DejaVuSans.ttf", 15)
+F_BRIEF = font("DejaVuSans.ttf", 15)
+F_BRIEF_LBL = font("DejaVuSans-Bold.ttf", 15)
+F_FOOT = font("DejaVuSans.ttf", 14)
+
+MARGIN = 30
+CONTENT_W = PAGE_W - 2 * MARGIN
+
+
+def wrap_text(text, fnt, max_width, draw):
+    """Split text into lines that each fit max_width with font fnt."""
+    lines = []
+    for paragraph in text.split("\n"):
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+        cur = words[0]
+        for word in words[1:]:
+            trial = cur + " " + word
+            if draw.textlength(trial, font=fnt) <= max_width:
+                cur = trial
+            else:
                 lines.append(cur)
-            cur = word
-    if cur:
+                cur = word
         lines.append(cur)
     return lines
 
 
-def draw_wrapped(draw, x, y, text, fnt, color, max_w, leading=None):
-    leading = leading or int(fnt.size * 1.22)
-    for line in wrap(draw, text, fnt, max_w):
-        draw.text((x, y), line, font=fnt, fill=color)
+def draw_lines(draw, x, y, lines, fnt, fill, leading):
+    """Draw wrapped lines starting at (x, y); return y after last line."""
+    for line in lines:
+        draw.text((x, y), line, font=fnt, fill=fill)
         y += leading
     return y
 
 
-def panel(draw, x, y, w, h, label, label_color, headline, deck, hsize=30):
-    """One bordered news panel with a kicker, headline and deck."""
-    draw.rectangle([x, y, x + w, y + h], outline=RULE, width=2)
-    draw.rectangle([x, y, x + w, y + 30], fill=label_color)
-    draw.text((x + 12, y + 6), label, font=font(SANS_B, 16), fill=(255, 255, 255))
-    ty = y + 44
-    ty = draw_wrapped(draw, x + 12, ty, headline, font(SERIF, hsize),
-                      INK, w - 24, leading=int(hsize * 1.12))
-    draw_wrapped(draw, x + 12, ty + 8, deck, font(SANS, 19),
-                 (52, 50, 46), w - 24, leading=24)
+def text_block(draw, x, y, text, fnt, max_width, fill, leading):
+    """Draw a wrapped text block; return the y just below it."""
+    lines = wrap_text(text, fnt, max_width, draw)
+    return draw_lines(draw, x, y, lines, fnt, fill, leading)
+
+
+def skyline(draw, x0, y0, x1, y1):
+    """A small Vice City sunset: banded sky, sun, rooftops, two palms."""
+    steps = 24
+    for i in range(steps):
+        t = i / (steps - 1)
+        r = int(SKY_TOP[0] + (SKY_MID[0] - SKY_TOP[0]) * t)
+        g = int(SKY_TOP[1] + (SKY_MID[1] - SKY_TOP[1]) * t)
+        b = int(SKY_TOP[2] + (SKY_MID[2] - SKY_TOP[2]) * t)
+        ya = y0 + (y1 - y0) * i // steps
+        yb = y0 + (y1 - y0) * (i + 1) // steps
+        draw.rectangle([x0, ya, x1, yb], fill=(r, g, b))
+    # low band of dusk purple
+    draw.rectangle([x0, y0 + (y1 - y0) * 3 // 4, x1, y1], fill=SKY_LOW)
+    # sun
+    cx = x0 + (x1 - x0) * 2 // 3
+    cy = y0 + (y1 - y0) // 3
+    r = 16
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 236, 170))
+    # rooftops, left to right
+    base = y1
+    towers = [
+        (0.00, 0.42, 0.14), (0.14, 0.60, 0.10), (0.24, 0.34, 0.12),
+        (0.36, 0.52, 0.10), (0.46, 0.30, 0.12), (0.58, 0.48, 0.10),
+        (0.68, 0.36, 0.12), (0.80, 0.55, 0.09), (0.89, 0.40, 0.11),
+    ]
+    for fx, fh, fw in towers:
+        tx = x0 + (x1 - x0) * fx
+        tw = (x1 - x0) * fw
+        th = (y1 - y0) * fh
+        draw.rectangle([tx, base - th, tx + tw, base], fill=(38, 24, 64))
+    # two palm silhouettes, drawn against the brighter sky so they read
+    for px, ph in [(0.10, 0.52), (0.93, 0.46)]:
+        bx = x0 + (x1 - x0) * px
+        top = base - (y1 - y0) * ph
+        draw.line([bx, base, bx + 4, top], fill=(52, 30, 74), width=3)
+        for dx, dy in [(-16, -6), (-12, -14), (0, -18), (12, -14), (16, -6)]:
+            draw.line([bx + 4, top, bx + 4 + dx, top + dy],
+                      fill=(52, 30, 74), width=3)
 
 
 def main():
-    img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
+    img = Image.new("RGB", (PAGE_W, PAGE_H), PAPER)
+    draw = ImageDraw.Draw(img)
+    warnings = []
 
-    # ---- Masthead -------------------------------------------------------
-    d.text((28, 22), "THE WORLD IN ONE PICTURE",
-           font=font(SANS_B, 22), fill=RED)
-    d.text((28, 52), "Thursday 19 November 2026",
-           font=font(SERIF, 52), fill=INK)
-    d.text((28, 118), "THE DAY'S WORLD NEWS  •  ONE PAGE  •  EVERY STORY CHECKED",
-           font=font(SANS_B, 17), fill=GREY)
-    d.line([(28, 152), (996, 152)], fill=INK, width=4)
-    d.line([(28, 160), (996, 160)], fill=INK, width=1)
+    # ---- masthead ------------------------------------------------------
+    title = "THE WORLD IN ONE PICTURE"
+    tw = draw.textlength(title, font=F_TITLE)
+    draw.text(((PAGE_W - tw) / 2, 26), title, font=F_TITLE, fill=INK)
+    date_line = "THURSDAY 19 NOVEMBER 2026"
+    dw = draw.textlength(date_line, font=F_DATE)
+    draw.text(((PAGE_W - dw) / 2, 92), date_line, font=F_DATE, fill=ACCENT)
+    draw.line([MARGIN, 124, PAGE_W - MARGIN, 124], fill=RULE, width=3)
+    draw.line([MARGIN, 130, PAGE_W - MARGIN, 130], fill=RULE, width=1)
 
-    # ---- Lead story: GTA VI launches ------------------------------------
-    x, y, w, h = 28, 176, 968, 252
-    d.rectangle([x, y, x + w, y + h], outline=RULE, width=2)
-    d.rectangle([x, y, x + w, y + 34], fill=RED)
-    d.text((x + 14, y + 7), "LEAD  •  GRAND THEFT AUTO VI",
-           font=font(SANS_B, 17), fill=(255, 255, 255))
-    ty = draw_wrapped(d, x + 14, y + 48,
-                      "GTA VI is here — Vice City opens worldwide at midnight",
-                      font(SERIF, 40), INK, w - 28, leading=46)
-    draw_wrapped(d, x + 14, ty + 10,
-                 "Rockstar's sequel launches on PS5 and Xbox Series X|S at "
-                 "$79.99, 13 years after GTA V. About 16 million preorders "
-                 "and $1.5B+ in sales before a single copy is played — and "
-                 "still no PC release date.",
-                 font(SANS, 21), (52, 50, 46), w - 28, leading=27)
-
-    # ---- Row 2: Shenzhen summit + Speaker nomination --------------------
-    panel(d, 28, 444, 476, 218, "DIPLOMACY  •  SHENZHEN", TEAL,
-          "Trump, Xi and Putin meet — a first",
-          "The first-ever three-way summit opens at Kylin Villa at "
-          "2:30pm, on the APEC sidelines. Ukraine, Iran, trade and "
-          "AI on the table; no formal agenda published.")
-    panel(d, 520, 444, 476, 218, "U.S. HOUSE", (38, 68, 38),
-          "Jeffries nominated for Speaker — 251–11",
-          "House Democrats pick Hakeem Jeffries in a secret ballot. "
-          "If elected on Jan 3 he would be the first Black Speaker.")
-
-    # ---- Row 3: Voyager, EU loan, Also today ---------------------------
-    panel(d, 28, 678, 312, 236, "SPACE  •  NASA", (24, 48, 96),
-          "Voyager 1 reaches one light-day from Earth",
-          "16.1 billion miles out — the first human-made object "
-          "that far. Its signal now takes 24 hours each way.",
-          hsize=27)
-    panel(d, 356, 678, 312, 236, "EUROPE  •  UKRAINE", (96, 52, 8),
-          "EU proposes a €45B loan for Ukraine",
-          "Brussels would raise the money on capital markets; "
-          "Kyiv repays once Russia pays reparations.",
-          hsize=27)
-
-    # Also-today panel (custom: a bulleted list, no headline wrap)
-    x, y, w, h = 684, 678, 312, 236
-    d.rectangle([x, y, x + w, y + h], outline=RULE, width=2)
-    d.rectangle([x, y, x + w, y + 30], fill=(52, 50, 46))
-    d.text((x + 12, y + 6), "ALSO TODAY", font=font(SANS_B, 16), fill=(255, 255, 255))
-    items = [
-        "Cyclone Akvan nears Andhra Pradesh, due Nov 20",
-        "Russia accuses France of sending troops to Ukraine",
-        "India beats Pakistan 2–1, wins SAFF final",
-        "Australia sanctions Israeli settlers",
+    # ---- lead story: GTA VI -------------------------------------------
+    lead_x, lead_y = MARGIN, 144
+    lead_w, lead_h = CONTENT_W, 320
+    draw.rectangle([lead_x, lead_y, lead_x + lead_w, lead_y + lead_h],
+                   outline=RULE, width=2)
+    lx = lead_x + 16
+    draw.text((lx, lead_y + 12), "GRAND THEFT AUTO VI", font=F_KICKER,
+              fill=ACCENT)
+    head_y = text_block(draw, lx, lead_y + 38,
+                        "Grand Theft Auto VI launches worldwide",
+                        F_HEAD, lead_w - 32, INK, 48)
+    deck_y = text_block(
+        draw, lx, head_y + 8,
+        "Rockstar's long-awaited sequel rolls out from midnight local time, "
+        "starting in New Zealand, on PlayStation 5 and Xbox Series X|S. Set in "
+        "Vice City and the fictional state of Leonida, it follows Lucia "
+        "Caminos and Jason Duval \u2014 thirteen years after GTA V, with no PC "
+        "release date announced.",
+        F_DECK, 600, SOFT, 23)
+    # sunset artwork on the right of the deck
+    art_x0 = lead_x + lead_w - 330
+    art_y0 = head_y + 8
+    art_x1 = lead_x + lead_w - 16
+    art_y1 = lead_y + lead_h - 66
+    skyline(draw, art_x0, art_y0, art_x1, art_y1)
+    draw.rectangle([art_x0, art_y0, art_x1, art_y1], outline=RULE, width=1)
+    if deck_y > art_y1 + 4:
+        warnings.append("lead deck runs past artwork")
+    # stat strip along the bottom of the lead panel
+    stats = [
+        ("\u224816 million", "preorders"),
+        ("$1.5B+", "sales before launch (Sensor Tower)"),
+        ("$79.99", "standard edition"),
     ]
-    iy = y + 44
-    for item in items:
-        d.text((x + 12, iy), "•", font=font(SANS_B, 18), fill=RED)
-        iy = draw_wrapped(d, x + 30, iy, item, font(SANS, 17),
-                          (52, 50, 46), w - 42, leading=21)
-        iy += 5
+    stat_y = lead_y + lead_h - 56
+    draw.line([lead_x, stat_y - 8, lead_x + lead_w, stat_y - 8],
+              fill=PANEL_LINE, width=1)
+    sw = lead_w // 3
+    for i, (num, lbl) in enumerate(stats):
+        cx = lead_x + i * sw
+        if i:
+            draw.line([cx, stat_y - 4, cx, lead_y + lead_h - 10],
+                      fill=PANEL_LINE, width=1)
+        nw = draw.textlength(num, font=F_STAT_NUM)
+        draw.text((cx + (sw - nw) / 2, stat_y), num, font=F_STAT_NUM,
+                  fill=INK)
+        lw = draw.textlength(lbl, font=F_STAT_LBL)
+        draw.text((cx + (sw - lw) / 2, stat_y + 28), lbl, font=F_STAT_LBL,
+                  fill=SOFT)
 
-    # ---- Footer ---------------------------------------------------------
-    d.line([(28, 936), (996, 936)], fill=INK, width=2)
-    d.text((28, 950),
-           "Sources: Reuters  •  AP  •  CNN  •  NASA  •  Financial Times  •  AFP  —  19 November 2026",
-           font=font(SANS, 17), fill=GREY)
-    d.text((28, 974),
-           "Every headline above is from reporting published on 19 November 2026.",
-           font=font(SANS, 17), fill=GREY)
+    # ---- two-column row -------------------------------------------------
+    row2_y, row2_h = 480, 196
+    col_gap = 20
+    col_w = (CONTENT_W - col_gap) // 2
+    cols2 = [
+        ("SUMMIT \u2014 SHENZHEN",
+         "Trump, Xi and Putin meet in first-ever trilateral summit",
+         "The three leaders gather at Kylin Villa at 2:30pm local time, on "
+         "the APEC sidelines. Trump arrived Nov 18; Putin arrived early Nov "
+         "18 for talks with Xi. Possible subjects: Ukraine, Iran, trade, AI "
+         "and nuclear weapons. No formal agenda published; first Trump\u2013"
+         "Putin meeting in over a year."),
+        ("WASHINGTON",
+         "Jeffries nominated for House Speaker",
+         "Democrats nominated Hakeem Jeffries 251\u201311 in a ballot on "
+         "Wednesday. If elected Jan 3 he would be the first Black Speaker "
+         "(218 votes needed). Katherine Clark is set to be the first woman "
+         "majority leader, Pete Aguilar the first Latino whip, Lauren "
+         "Underwood the highest-ranking Black woman in Congress."),
+    ]
+    for i, (label, head, body) in enumerate(cols2):
+        x = MARGIN + i * (col_w + col_gap)
+        draw.text((x, row2_y), label, font=F_LABEL, fill=ACCENT)
+        hy = text_block(draw, x, row2_y + 22, head, F_COL_HEAD, col_w, INK, 28)
+        end = text_block(draw, x, hy + 6, body, F_COL_BODY, col_w, SOFT, 18)
+        if end > row2_y + row2_h:
+            warnings.append(f"two-col {i} overflows by {end - row2_y - row2_h}px")
+    draw.line([MARGIN, row2_y + row2_h + 8, PAGE_W - MARGIN,
+               row2_y + row2_h + 8], fill=PANEL_LINE, width=1)
 
-    img.save(OUT, format="PNG", optimize=True)
-    print("wrote", OUT, os.path.getsize(OUT), "bytes")
+    # ---- three-column row ----------------------------------------------
+    row3_y, row3_h = 700, 164
+    col3_w = (CONTENT_W - 2 * col_gap) // 3
+    cols3 = [
+        ("SPACE",
+         "Voyager 1 one light-day from Earth",
+         "It crossed the mark Wednesday at 5:16:07am EST \u2014 16.1 billion "
+         "miles, 173.14 AU \u2014 the first human-made object that far. NASA "
+         "confirms at JPL."),
+        ("EUROPE",
+         "EU proposes \u20ac45B loan for Ukraine",
+         "The European Commission is to present a \u20ac45 billion loan for "
+         "Ukraine, raised on capital markets and repaid after Russia pays "
+         "reparations (Financial Times)."),
+        ("WEATHER",
+         "Cyclone Akvan strengthens",
+         "The storm is intensifying into a very severe cyclonic storm over "
+         "the Bay of Bengal and is expected to reach the Andhra Pradesh "
+         "coast on Nov 20."),
+    ]
+    for i, (label, head, body) in enumerate(cols3):
+        x = MARGIN + i * (col3_w + col_gap)
+        draw.text((x, row3_y), label, font=F_LABEL, fill=ACCENT)
+        hy = text_block(draw, x, row3_y + 22, head, F_SMALL_HEAD, col3_w,
+                        INK, 25)
+        end = text_block(draw, x, hy + 5, body, F_SMALL_BODY, col3_w, SOFT,
+                         18)
+        if end > row3_y + row3_h:
+            warnings.append(f"three-col {i} overflows by "
+                            f"{end - row3_y - row3_h}px")
+    draw.line([MARGIN, row3_y + row3_h + 8, PAGE_W - MARGIN,
+               row3_y + row3_h + 8], fill=PANEL_LINE, width=1)
+
+    # ---- in brief --------------------------------------------------------
+    brief_y = 880
+    draw.text((MARGIN, brief_y), "IN BRIEF", font=F_BRIEF_LBL, fill=ACCENT)
+    briefs = [
+        "Russia accuses France of deploying troops to Ukraine, Foreign "
+        "Minister Lavrov said (AFP).",
+        "India beat Pakistan 2\u20131 to win the SAFF Championship final in "
+        "Dhaka.",
+        "Australia sanctions Israeli settlers and organisations over West "
+        "Bank expansion.",
+    ]
+    bw = (CONTENT_W - 2 * col_gap) // 3
+    for i, item in enumerate(briefs):
+        x = MARGIN + i * (bw + col_gap)
+        if i:
+            draw.line([x - col_gap // 2, brief_y + 2, x - col_gap // 2,
+                       brief_y + 62], fill=PANEL_LINE, width=1)
+        end = text_block(draw, x, brief_y + 24, item, F_BRIEF, bw, SOFT, 18)
+        if end > brief_y + 78:
+            warnings.append(f"brief {i} overflows by {end - brief_y - 78}px")
+
+    # ---- footer ----------------------------------------------------------
+    draw.line([MARGIN, 972, PAGE_W - MARGIN, 972], fill=RULE, width=2)
+    foot = "Sources: Reuters, AP, CNN, NASA, Financial Times, AFP."
+    fw = draw.textlength(foot, font=F_FOOT)
+    draw.text(((PAGE_W - fw) / 2, 982), foot, font=F_FOOT, fill=SOFT)
+
+    out = os.path.join(HERE, "entry.png")
+    img.save(out, "PNG")
+    size = os.path.getsize(out)
+    print(f"wrote {out}: {PAGE_W}x{PAGE_H}, {size} bytes")
+    if size > 1048576:
+        warnings.append(f"entry.png over 1 MiB ({size} bytes)")
+    for w in warnings:
+        print(f"WARNING: {w}")
+    return 1 if warnings else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
